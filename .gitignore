@@ -1,0 +1,25 @@
+# Secrets
+.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Node
+node_modules/
+dist/
+
+# Face data, models and indexes (biometric data stays local)
+backend/data/
+*.pt
+*.pkl
+*.faiss
+*.index
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

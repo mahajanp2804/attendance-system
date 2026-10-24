@@ -1,0 +1,71 @@
+version: "3.9"
+
+services:
+
+  # ── PostgreSQL database ──────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: attendance_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       attendance_db
+      POSTGRES_USER:     attendance_user
+      POSTGRES_PASSWORD: attendance_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U attendance_user -d attendance_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── FastAPI backend ──────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: attendance_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL:      postgresql+asyncpg://attendance_user:attendance_pass@db:5432/attendance_db
+      DATABASE_URL_SYNC: postgresql://attendance_user:attendance_pass@db:5432/attendance_db
+      SECRET_KEY:        "change-this-in-production-use-openssl-rand-hex-32"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+      REFRESH_TOKEN_EXPIRE_DAYS:   "30"
+      EMBEDDINGS_DIR:    /app/data/embeddings
+      FACE_PHOTOS_DIR:   /app/data/face_photos
+      SNAPSHOTS_DIR:     /app/data/snapshots
+      RECOGNITION_THRESHOLD: "0.75"
+      CORS_ORIGINS:      '["http://localhost:5173","http://localhost:3000"]'
+    volumes:
+      - ./backend:/app
+      - face_data:/app/data
+    ports:
+      - "8000:8000"
+
+  # ── React frontend (dev server) ──────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: attendance_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: "http://localhost:8000"
+      VITE_WS_URL:  "ws://localhost:8000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+
+volumes:
+  postgres_data:
+  face_data:
