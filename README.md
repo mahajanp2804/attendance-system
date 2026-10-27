@@ -82,6 +82,7 @@ attendance-system/
 │   │   └── utils.py             # JWT, password hashing, role guards
 │   ├── routes/
 │   │   ├── students.py          # Student management (Step 2)
+│   │   ├── professors.py        # Professor management (Step 2)
 │   │   ├── timetable.py         # Timetable CRUD (Step 3)
 │   │   ├── attendance.py        # Attendance records (Step 4)
 │   │   └── recognition.py       # WebSocket face scan (Step 5)
@@ -102,7 +103,8 @@ attendance-system/
 │       │   ├── student/         # Student portal pages
 │       │   └── professor/       # Professor portal pages
 │       ├── components/          # Shared UI components
-│       └── hooks/               # Custom React hooks
+│       ├── hooks/               # API client
+│       └── store/               # Auth state (Zustand)
 └── docker-compose.yml
 ```
 
@@ -112,8 +114,8 @@ attendance-system/
 | Step | What | Status |
 |------|------|--------|
 | 1 | Database schema, models, migrations, auth | ✅ Done |
-| 2 | Student & professor management APIs | 🔜 Next |
-| 3 | Timetable API + semester management | ⬜ |
-| 4 | Attendance recording, override, export | ⬜ |
-| 5 | Face recognition engine + WebSocket | ⬜ |
-| 6 | React frontend — both portals | ⬜ |
+| 2 | Student & professor management APIs | ✅ Done |
+| 3 | Timetable API + semester management | ✅ Done |
+| 4 | Attendance recording, override, export | ✅ Done |
+| 5 | Face recognition engine + WebSocket | ✅ Done |
+| 6 | React frontend — both portals | ✅ Done |
