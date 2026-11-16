@@ -319,10 +319,12 @@ async def generate_embedding(
     # Import here to avoid circular deps; recognition engine built in Step 5
     try:
         from recognition.embedder import generate_and_save_embedding
-        embedding_path = await generate_and_save_embedding(
-            student_id=student_id,
-            photos_dir=student.face_photos_dir,
-            output_dir=settings.EMBEDDINGS_DIR,
+        from recognition.worker import run_ml
+        embedding_path, embedding = await run_ml(
+            generate_and_save_embedding,
+            student_id,
+            student.face_photos_dir,
+            settings.EMBEDDINGS_DIR,
         )
         student.embedding_path = embedding_path
         student.embedding_ready = True

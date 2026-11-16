@@ -87,19 +87,17 @@ class FaceEmbedder:
         return results
 
 
-async def generate_and_save_embedding(
+def generate_and_save_embedding(
     student_id: str,
     photos_dir: str,
     output_dir: str,
-) -> str:
+) -> tuple[str, np.ndarray]:
     """
     Generate mean embedding from all face photos in photos_dir.
     Saves a .npy file to output_dir/{student_id}.npy.
-    Returns the saved path.
+    Returns (saved path, embedding). Blocking — call it through run_ml().
+    Uses the shared embedder singleton, so FaceNet is only loaded once.
     """
-    embedder = FaceEmbedder()
-    embedder._load()
-
     photo_files = [
         f for f in os.listdir(photos_dir)
         if f.lower().endswith((".jpg", ".jpeg", ".png"))
@@ -129,7 +127,7 @@ async def generate_and_save_embedding(
     out_path = os.path.join(output_dir, f"{student_id}.npy")
     np.save(out_path, mean_emb)
 
-    return out_path
+    return out_path, mean_emb
 
 
 # Singleton
