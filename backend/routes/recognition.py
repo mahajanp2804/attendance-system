@@ -144,6 +144,8 @@ async def recognition_ws(websocket: WebSocket, session_id: str):
             frame_bytes = raw["bytes"]
             frame = _decode_frame(frame_bytes)
             if frame is None:
+                # Still reply, so the scanner knows it can send the next frame
+                await websocket.send_text(json.dumps({"type": "skipped", "reason": "Could not decode frame"}))
                 continue
 
             result = await _process_frame(frame, session_id, tracker, enrolled_ids)
