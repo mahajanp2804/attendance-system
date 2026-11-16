@@ -32,7 +32,7 @@ class FaceEmbedder:
                 device=self.device,
                 post_process=True,
             )
-        print(f"✅ FaceNet loaded on {self.device}")
+            print(f"✅ FaceNet loaded on {self.device}")
 
     def embed(self, face_bgr: np.ndarray) -> Optional[np.ndarray]:
         """
