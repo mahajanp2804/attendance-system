@@ -326,6 +326,9 @@ async def generate_embedding(
             student.face_photos_dir,
             settings.EMBEDDINGS_DIR,
         )
+        # Make the student recognisable straight away, without a server restart
+        from recognition.faiss_index import faiss_index
+        faiss_index.add_student(student_id, embedding)
         student.embedding_path = embedding_path
         student.embedding_ready = True
         db.add(student)
