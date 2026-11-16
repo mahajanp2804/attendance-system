@@ -12,6 +12,7 @@ export default function ProfScanner() {
   const canvasRef  = useRef(null)
   const wsRef      = useRef(null)
   const loopRef    = useRef(null)
+  const inFlightRef = useRef(0)   // send time of the frame awaiting a reply, 0 if none
 
   const [slots,       setSlots]       = useState([])
   const [selectedSlot,setSelectedSlot]= useState(preselectedSlot || '')
@@ -66,7 +67,10 @@ export default function ProfScanner() {
           setConnected(true)
           setScanning(true)
           startFrameLoop()
+        } else if (msg.type === 'skipped') {
+          inFlightRef.current = 0
         } else if (msg.type === 'result') {
+          inFlightRef.current = 0
           setResult(msg)
           setFaces(msg.faces || [])
           drawOverlay(msg.faces || [])
@@ -85,10 +89,15 @@ export default function ProfScanner() {
   const startFrameLoop = () => {
     const canvas = document.createElement('canvas')
     const FPS = 3   // 3 frames/sec is sufficient for classroom scan
+    const REPLY_TIMEOUT_MS = 5000   // give up waiting on a reply after this
+    inFlightRef.current = 0
 
     loopRef.current = setInterval(() => {
       const video = videoRef.current
       if (!video || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
+      // Wait for the previous frame's result, so frames don't pile up when the server is slower than FPS
+      if (inFlightRef.current && Date.now() - inFlightRef.current < REPLY_TIMEOUT_MS) return
+      inFlightRef.current = Date.now()
 
       canvas.width  = video.videoWidth
       canvas.height = video.videoHeight
@@ -96,6 +105,8 @@ export default function ProfScanner() {
       canvas.toBlob(blob => {
         if (blob && wsRef.current?.readyState === WebSocket.OPEN) {
           blob.arrayBuffer().then(buf => wsRef.current.send(buf))
+        } else {
+          inFlightRef.current = 0
         }
       }, 'image/jpeg', 0.85)
     }, 1000 / FPS)
