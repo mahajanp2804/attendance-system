@@ -28,6 +28,7 @@ from recognition.detector import detector
 from recognition.embedder import embedder
 from recognition.faiss_index import faiss_index
 from recognition.session import tracker_registry
+from recognition.worker import run_ml
 from config import settings
 from auth.utils import decode_token
 
@@ -168,6 +169,31 @@ def _decode_frame(data: bytes) -> Optional[np.ndarray]:
         return None
 
 
+def _detect_and_match(frame: np.ndarray) -> list[tuple]:
+    """
+    Blocking part of frame processing — runs on the inference worker.
+    Detects all faces, embeds them in one batch and finds each one's closest student.
+    Returns (box, student_id, similarity) per face; student_id is None when the
+    face couldn't be embedded or nobody matched.
+    """
+    boxes = detector.detect(frame)
+    if not boxes:
+        return []
+
+    crops = [detector.crop_face(frame, box) for box in boxes]
+    embeddings = embedder.embed_batch(crops)
+
+    results = []
+    for box, embedding in zip(boxes, embeddings):
+        matches = faiss_index.search(embedding, top_k=1) if embedding is not None else []
+        if matches:
+            student_id, similarity = matches[0]
+            results.append((box, student_id, similarity))
+        else:
+            results.append((box, None, None))
+    return results
+
+
 async def _process_frame(
     frame: np.ndarray,
     session_id: str,
@@ -178,28 +204,13 @@ async def _process_frame(
     Detect all faces, embed, match FAISS, deduplicate, write DB if first recognition.
     Returns JSON-serialisable result dict.
     """
-    boxes = detector.detect(frame)
-    if not boxes:
-        return {
-            "type": "result",
-            "faces": [],
-            "unknown_count": 0,
-            "present_count": tracker.count,
-            "total_enrolled": total_enrolled,
-            "session_id": session_id,
-        }
-
-    # Crop all faces
-    crops = [detector.crop_face(frame, box) for box in boxes]
-
-    # Batch embed
-    embeddings = embedder.embed_batch(crops)
+    matches = await run_ml(_detect_and_match, frame)
 
     faces_out = []
     unknown_count = 0
 
-    for box, embedding in zip(boxes, embeddings):
-        if embedding is None:
+    for box, student_id, similarity in matches:
+        if student_id is None:
             unknown_count += 1
             faces_out.append({
                 "status": "unknown",
@@ -207,19 +218,6 @@ async def _process_frame(
                 "box": [box.x1, box.y1, box.x2, box.y2],
             })
             continue
-
-        # FAISS match
-        matches = faiss_index.search(embedding, top_k=1)
-        if not matches:
-            unknown_count += 1
-            faces_out.append({
-                "status": "unknown",
-                "confidence": 0.0,
-                "box": [box.x1, box.y1, box.x2, box.y2],
-            })
-            continue
-
-        student_id, similarity = matches[0]
 
         # Cosine similarity threshold — below this = unknown
         if similarity < settings.RECOGNITION_THRESHOLD:
