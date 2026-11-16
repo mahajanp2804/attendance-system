@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
 from typing import Optional
 
 from db.session import AsyncSessionLocal
@@ -102,14 +102,17 @@ async def recognition_ws(websocket: WebSocket, session_id: str):
             await websocket.close()
             return
 
-        # Count enrolled students for the live counter
+        # Students enrolled in this class — only they can be matched,
+        # so a lookalike from another class is never marked present here
         from db.models import TimetableSlot, Enrollment
         slot = await db.get(TimetableSlot, str(session_obj.slot_id))
-        total_enrolled = 0
+        enrolled_ids: set[str] = set()
         if slot:
-            total_enrolled = await db.scalar(
-                select(func.count()).where(Enrollment.subject_id == slot.subject_id)
-            ) or 0
+            rows = await db.scalars(
+                select(Enrollment.student_id).where(Enrollment.subject_id == slot.subject_id)
+            )
+            enrolled_ids = {str(student_id) for student_id in rows}
+        total_enrolled = len(enrolled_ids)
 
     # ── Get or create dedup tracker for this session ──────────────────────────
     tracker = tracker_registry.get_or_create(session_id)
@@ -143,7 +146,7 @@ async def recognition_ws(websocket: WebSocket, session_id: str):
             if frame is None:
                 continue
 
-            result = await _process_frame(frame, session_id, tracker, total_enrolled)
+            result = await _process_frame(frame, session_id, tracker, enrolled_ids)
             await websocket.send_text(json.dumps(result, default=str))
 
     except WebSocketDisconnect:
@@ -169,10 +172,11 @@ def _decode_frame(data: bytes) -> Optional[np.ndarray]:
         return None
 
 
-def _detect_and_match(frame: np.ndarray) -> list[tuple]:
+def _detect_and_match(frame: np.ndarray, enrolled_ids: set[str]) -> list[tuple]:
     """
     Blocking part of frame processing — runs on the inference worker.
-    Detects all faces, embeds them in one batch and finds each one's closest student.
+    Detects all faces, embeds them in one batch and finds each one's closest
+    enrolled student.
     Returns (box, student_id, similarity) per face; student_id is None when the
     face couldn't be embedded or nobody matched.
     """
@@ -185,7 +189,10 @@ def _detect_and_match(frame: np.ndarray) -> list[tuple]:
 
     results = []
     for box, embedding in zip(boxes, embeddings):
-        matches = faiss_index.search(embedding, top_k=1) if embedding is not None else []
+        matches = (
+            faiss_index.search(embedding, top_k=1, allowed_ids=enrolled_ids)
+            if embedding is not None else []
+        )
         if matches:
             student_id, similarity = matches[0]
             results.append((box, student_id, similarity))
@@ -198,13 +205,13 @@ async def _process_frame(
     frame: np.ndarray,
     session_id: str,
     tracker,
-    total_enrolled: int,
+    enrolled_ids: set[str],
 ) -> dict:
     """
     Detect all faces, embed, match FAISS, deduplicate, write DB if first recognition.
     Returns JSON-serialisable result dict.
     """
-    matches = await run_ml(_detect_and_match, frame)
+    matches = await run_ml(_detect_and_match, frame, enrolled_ids)
 
     faces_out = []
     unknown_count = 0
@@ -258,7 +265,7 @@ async def _process_frame(
         "faces": faces_out,
         "unknown_count": unknown_count,
         "present_count": tracker.count,
-        "total_enrolled": total_enrolled,
+        "total_enrolled": len(enrolled_ids),
         "session_id": session_id,
     }
 
