@@ -75,9 +75,12 @@ class FaissIndex:
         self,
         query: np.ndarray,
         top_k: int = 1,
+        allowed_ids: Optional[set[str]] = None,
     ) -> list[tuple[str, float]]:
         """
         Find the top_k closest students to the query embedding.
+        If allowed_ids is given, only those students can be returned
+        (e.g. the students enrolled in the class being scanned).
         Returns list of (student_id, cosine_similarity) sorted by similarity desc.
         Cosine similarity on L2-normalised vectors ∈ [-1, 1]; higher = better match.
         """
@@ -86,14 +89,20 @@ class FaissIndex:
                 return []
 
             vec = query.astype("float32").reshape(1, -1)
-            k = min(top_k, self._index.ntotal)
+            # When filtering, rank everyone so allowed students aren't cut off by top_k
+            k = self._index.ntotal if allowed_ids is not None else min(top_k, self._index.ntotal)
             scores, indices = self._index.search(vec, k)
 
             results = []
             for score, idx in zip(scores[0], indices[0]):
                 if idx == -1:
                     continue
-                results.append((self._student_ids[idx], float(score)))
+                student_id = self._student_ids[idx]
+                if allowed_ids is not None and student_id not in allowed_ids:
+                    continue
+                results.append((student_id, float(score)))
+                if len(results) == top_k:
+                    break
 
         return results
 
