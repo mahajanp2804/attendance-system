@@ -19,6 +19,21 @@ export default function ProfDashboard() {
     }).finally(() => setLoading(false))
   }, [])
 
+  // Download through the API client so the request carries the login token
+  const exportCSV = async () => {
+    try {
+      const res = await api.get('/api/attendance/export', { responseType: 'blob' })
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }))
+      const a   = document.createElement('a')
+      a.href    = url
+      a.download = `attendance_${new Date().toISOString().split('T')[0]}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      alert('Export failed. Please try again.')
+    }
+  }
+
   if (loading) return <div className="animate-pulse space-y-4 max-w-2xl mx-auto">{[...Array(3)].map((_,i) => <div key={i} className="card h-24 bg-slate-100" />)}</div>
 
   return (
@@ -92,16 +107,16 @@ export default function ProfDashboard() {
           </svg>
           <p className="text-sm font-medium text-text-primary">Enroll Student</p>
         </Link>
-        <a
-          href="/api/attendance/export"
-          className="card hover:border-primary transition-colors text-center py-5 block"
-          target="_blank" rel="noopener"
+        <button
+          type="button"
+          onClick={exportCSV}
+          className="card hover:border-primary transition-colors text-center py-5 block w-full"
         >
           <svg className="w-6 h-6 mx-auto text-primary mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <p className="text-sm font-medium text-text-primary">Export CSV</p>
-        </a>
+        </button>
       </div>
     </div>
   )
