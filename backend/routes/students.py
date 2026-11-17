@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from pydantic import BaseModel, EmailStr
 from typing import Optional
-import os, shutil, uuid
+import os, uuid
 
 from db.session import get_db
 from db.models import User, RoleEnum, Enrollment, Subject, Semester
@@ -26,6 +26,11 @@ from auth.utils import get_current_user, require_professor, hash_password, ensur
 from config import settings
 
 router = APIRouter(prefix="/api/students", tags=["students"])
+
+# Face photo upload limits
+MAX_PHOTO_BYTES       = 5 * 1024 * 1024   # 5 MB per photo
+MAX_PHOTOS_PER_UPLOAD = 20
+IMAGE_SIGNATURES      = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")   # JPEG, PNG
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -269,26 +274,36 @@ async def upload_face_photos(
     _prof: User = Depends(require_professor),
 ):
     student = await _get_student_or_404(student_id, db)
+    if len(files) > MAX_PHOTOS_PER_UPLOAD:
+        raise HTTPException(status_code=400, detail=f"Upload at most {MAX_PHOTOS_PER_UPLOAD} photos at a time")
 
     save_dir = os.path.join(settings.FACE_PHOTOS_DIR, student_id)
     os.makedirs(save_dir, exist_ok=True)
 
-    saved = []
+    saved, skipped = [], []
     for file in files:
         ext = os.path.splitext(file.filename)[1].lower()
         if ext not in {".jpg", ".jpeg", ".png"}:
+            skipped.append({"file": file.filename, "reason": "not a .jpg or .png"})
+            continue
+        data = await file.read(MAX_PHOTO_BYTES + 1)
+        if len(data) > MAX_PHOTO_BYTES:
+            skipped.append({"file": file.filename, "reason": "larger than 5 MB"})
+            continue
+        # Check the file really is an image, not just named like one
+        if not data.startswith(IMAGE_SIGNATURES):
+            skipped.append({"file": file.filename, "reason": "not a valid JPEG or PNG image"})
             continue
         filename = f"{uuid.uuid4().hex}{ext}"
-        path = os.path.join(save_dir, filename)
-        with open(path, "wb") as f:
-            shutil.copyfileobj(file.file, f)
+        with open(os.path.join(save_dir, filename), "wb") as f:
+            f.write(data)
         saved.append(filename)
 
     if saved:
         student.face_photos_dir = save_dir
         db.add(student)
 
-    return {"saved": len(saved), "files": saved}
+    return {"saved": len(saved), "files": saved, "skipped": skipped}
 
 
 # ─── Trigger embedding generation ────────────────────────────────────────────
