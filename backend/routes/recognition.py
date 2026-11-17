@@ -30,7 +30,7 @@ from recognition.faiss_index import faiss_index
 from recognition.session import tracker_registry
 from recognition.worker import run_ml
 from config import settings
-from auth.utils import decode_token
+from auth.utils import decode_token, require_professor
 
 router = APIRouter(prefix="/api/recognition", tags=["recognition"])
 
@@ -38,14 +38,14 @@ router = APIRouter(prefix="/api/recognition", tags=["recognition"])
 # ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
 @router.post("/reload-index")
-async def reload_faiss_index():
+async def reload_faiss_index(_prof: User = Depends(require_professor)):
     """Force-reload FAISS index after new student embeddings are added."""
     count = faiss_index.load_all(settings.EMBEDDINGS_DIR)
     return {"status": "reloaded", "students_indexed": count}
 
 
 @router.get("/index-status")
-async def index_status():
+async def index_status(_prof: User = Depends(require_professor)):
     return {
         "ready": faiss_index.is_ready(),
         "students_indexed": faiss_index.student_count,
