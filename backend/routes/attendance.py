@@ -27,7 +27,7 @@ from db.models import (
     User, ClassSession, AttendanceRecord, TimetableSlot,
     Subject, Semester, Enrollment, RoleEnum, AttendanceStatus
 )
-from auth.utils import get_current_user, require_professor, teaches_slot
+from auth.utils import get_current_user, require_professor, teaches_slot, ensure_teaches_subject
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
 
@@ -457,7 +457,7 @@ async def export_attendance(
     from_date: Optional[date] = Query(None),
     to_date: Optional[date] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _prof: User = Depends(require_professor),
+    prof: User = Depends(require_professor),
 ):
     # Build query for sessions
     q = (
@@ -468,7 +468,11 @@ async def export_attendance(
         .join(Subject, Subject.id == TimetableSlot.subject_id)
         .where(ClassSession.is_completed == True)
     )
+    # Professors only export their own classes; admins export everything
+    if prof.role != RoleEnum.admin:
+        q = q.where(Subject.professor_id == str(prof.id))
     if subject_id:
+        await ensure_teaches_subject(prof, subject_id, db)
         q = q.where(Subject.id == subject_id)
     if semester_id:
         q = q.where(Subject.semester_id == semester_id)
