@@ -36,9 +36,18 @@ export default function ProfStudents() {
   const uploadPhotos = async (studentId, files) => {
     const fd = new FormData()
     Array.from(files).forEach(f => fd.append('files', f))
-    await api.post(`/api/students/${studentId}/photos`, fd, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
+    try {
+      const res = await api.post(`/api/students/${studentId}/photos`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      const skipped = res.data.skipped || []
+      if (skipped.length) {
+        alert(`Saved ${res.data.saved} photo(s). Skipped:\n` +
+          skipped.map(s => `• ${s.file}: ${s.reason}`).join('\n'))
+      }
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Upload failed. Please try again.')
+    }
     load()
   }
 
