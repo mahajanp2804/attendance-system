@@ -5,6 +5,7 @@ Routes:
   PATCH  /api/attendance/sessions/{id}/close           — close session, auto-mark absentees
   GET    /api/attendance/sessions/{id}/records         — all records for a session
   PATCH  /api/attendance/records/{id}                  — override a single record (professor)
+  GET    /api/attendance/records/{id}/snapshot         — face snapshot for a record (professor)
   GET    /api/attendance/summary                       — per-subject % for a student
   GET    /api/attendance/report                        — full report (professor, exportable)
   GET    /api/attendance/export                        — download CSV/Excel (professor)
@@ -12,14 +13,15 @@ Routes:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, case
 from pydantic import BaseModel
 from typing import Optional
 from datetime import date, datetime, timezone
-import io, csv
+import io, csv, os
 
+from config import settings
 from db.session import get_db
 from db.models import (
     User, ClassSession, AttendanceRecord, TimetableSlot,
@@ -280,6 +282,29 @@ async def override_record(
         is_overridden=record.is_overridden,
         override_reason=record.override_reason,
     )
+
+
+# ─── Face snapshot for a record ───────────────────────────────────────────────
+
+@router.get("/records/{record_id}/snapshot")
+async def get_record_snapshot(
+    record_id: str,
+    db: AsyncSession = Depends(get_db),
+    prof: User = Depends(require_professor),
+):
+    """Face crop captured when the student was recognised — class professor only."""
+    record = await db.get(AttendanceRecord, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    session = await db.get(ClassSession, str(record.session_id))
+    await _ensure_teaches(prof, session.slot_id, db)
+
+    # Only ever serve files from inside the snapshots folder
+    snapshots_dir = os.path.realpath(settings.SNAPSHOTS_DIR)
+    path = os.path.realpath(record.face_snapshot) if record.face_snapshot else ""
+    if not path.startswith(snapshots_dir + os.sep) or not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="No snapshot for this record")
+    return FileResponse(path, media_type="image/jpeg")
 
 
 # ─── Attendance summary (per student, per subject) ────────────────────────────
