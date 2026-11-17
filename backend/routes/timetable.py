@@ -185,6 +185,8 @@ async def create_subject(
 ):
     # If professor_id not specified, assign to the creating professor
     professor_id = body.professor_id or str(prof.id)
+    if professor_id != str(prof.id) and prof.role != RoleEnum.admin:
+        raise HTTPException(status_code=403, detail="Only admins can assign a subject to another professor")
     subject = Subject(
         name=body.name, code=body.code,
         semester_id=body.semester_id,
@@ -207,7 +209,11 @@ async def update_subject(
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
     await ensure_teaches_subject(prof, subject_id, db)
-    for field, value in body.model_dump(exclude_unset=True).items():
+    changes = body.model_dump(exclude_unset=True)
+    new_prof = changes.get("professor_id")
+    if new_prof and new_prof != str(prof.id) and prof.role != RoleEnum.admin:
+        raise HTTPException(status_code=403, detail="Only admins can assign a subject to another professor")
+    for field, value in changes.items():
         setattr(subject, field, value)
     db.add(subject)
     return await _enrich_subject(subject, db)
