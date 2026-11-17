@@ -11,7 +11,7 @@ from db.models import User, RoleEnum
 from auth.utils import (
     verify_password, hash_password,
     create_access_token, create_refresh_token,
-    decode_token, get_current_user,
+    decode_token, get_current_user, token_matches_password,
 )
 from auth.rate_limit import email_limiter, ip_limiter
 
@@ -100,6 +100,8 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found")
+    if not token_matches_password(payload, user):
+        raise HTTPException(status_code=401, detail="Password changed — please log in again")
 
     return TokenResponse(
         access_token=create_access_token(str(user.id), user.role.value, user.password_hash),
