@@ -30,7 +30,7 @@ from recognition.faiss_index import faiss_index
 from recognition.session import tracker_registry
 from recognition.worker import run_ml
 from config import settings
-from auth.utils import decode_token, require_professor, teaches_slot
+from auth.utils import decode_token, require_professor, teaches_slot, token_matches_password
 
 router = APIRouter(prefix="/api/recognition", tags=["recognition"])
 
@@ -106,6 +106,10 @@ async def recognition_ws(websocket: WebSocket, session_id: str):
         user = await db.get(User, professor_id)
         if not user or not user.is_active:
             await websocket.send_text(json.dumps({"type": "error", "message": "Account not active"}))
+            await websocket.close()
+            return
+        if not token_matches_password(payload, user):
+            await websocket.send_text(json.dumps({"type": "error", "message": "Password changed — please log in again"}))
             await websocket.close()
             return
         if not await teaches_slot(user, session_obj.slot_id, db):
