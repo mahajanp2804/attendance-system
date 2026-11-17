@@ -28,7 +28,7 @@ from db.models import (
     User, Semester, Subject, TimetableSlot, Enrollment,
     RoleEnum, DayEnum
 )
-from auth.utils import get_current_user, require_professor
+from auth.utils import get_current_user, require_professor, ensure_teaches_subject
 
 router = APIRouter(tags=["timetable"])
 
@@ -201,11 +201,12 @@ async def update_subject(
     subject_id: str,
     body: SubjectUpdate,
     db: AsyncSession = Depends(get_db),
-    _prof: User = Depends(require_professor),
+    prof: User = Depends(require_professor),
 ):
     subject = await db.get(Subject, subject_id)
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
+    await ensure_teaches_subject(prof, subject_id, db)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(subject, field, value)
     db.add(subject)
@@ -216,11 +217,12 @@ async def update_subject(
 async def delete_subject(
     subject_id: str,
     db: AsyncSession = Depends(get_db),
-    _prof: User = Depends(require_professor),
+    prof: User = Depends(require_professor),
 ):
     subject = await db.get(Subject, subject_id)
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
+    await ensure_teaches_subject(prof, subject_id, db)
     await db.delete(subject)
 
 
