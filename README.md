@@ -18,8 +18,9 @@ git clone <repo>
 cd attendance-system
 
 cp backend/.env.example backend/.env
-# Edit backend/.env — set a strong SECRET_KEY
+# Edit backend/.env — set a strong SECRET_KEY (openssl rand -hex 32)
 ```
+The API refuses to start with the placeholder key (or one shorter than 32 characters) unless `DEBUG=true`.
 
 ### 2. Start everything with Docker
 ```bash
