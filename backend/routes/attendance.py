@@ -385,9 +385,9 @@ async def low_attendance_students(
     semester_id: Optional[str] = Query(None),
     threshold: float = Query(75.0),
     db: AsyncSession = Depends(get_db),
-    _prof: User = Depends(require_professor),
+    prof: User = Depends(require_professor),
 ):
-    """Returns all students below the attendance threshold across all subjects."""
+    """Returns students below the attendance threshold — in the professor's own subjects, or all for admins."""
     if not semester_id:
         active = await db.execute(select(Semester).where(Semester.is_active == True))
         sem = active.scalar_one_or_none()
@@ -400,6 +400,8 @@ async def low_attendance_students(
         .join(Subject, Subject.id == Enrollment.subject_id)
         .where(User.role == RoleEnum.student, User.is_active == True)
     )
+    if prof.role != RoleEnum.admin:
+        q = q.where(Subject.professor_id == str(prof.id))
     if semester_id:
         q = q.where(Subject.semester_id == semester_id)
 
