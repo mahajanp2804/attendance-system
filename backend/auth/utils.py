@@ -85,12 +85,25 @@ require_admin     = require_role(RoleEnum.admin)
 
 # ─── Class ownership ──────────────────────────────────────────────────────────
 
-async def teaches_slot(user: User, slot_id: str, db: AsyncSession) -> bool:
-    """True if the user is an admin or the professor of the slot's subject."""
+async def teaches_subject(user: User, subject_id: str, db: AsyncSession) -> bool:
+    """True if the user is an admin or the subject's professor."""
     if user.role == RoleEnum.admin:
         return True
     if user.role != RoleEnum.professor:
         return False
-    slot = await db.get(TimetableSlot, str(slot_id))
-    subject = await db.get(Subject, str(slot.subject_id)) if slot else None
+    subject = await db.get(Subject, str(subject_id))
     return subject is not None and str(subject.professor_id) == str(user.id)
+
+
+async def teaches_slot(user: User, slot_id: str, db: AsyncSession) -> bool:
+    """True if the user is an admin or the professor of the slot's subject."""
+    if user.role == RoleEnum.admin:
+        return True
+    slot = await db.get(TimetableSlot, str(slot_id))
+    return slot is not None and await teaches_subject(user, slot.subject_id, db)
+
+
+async def ensure_teaches_subject(user: User, subject_id: str, db: AsyncSession):
+    """403 unless the user teaches this subject (admins always pass)."""
+    if not await teaches_subject(user, subject_id, db):
+        raise HTTPException(status_code=403, detail="You don't teach this class")
