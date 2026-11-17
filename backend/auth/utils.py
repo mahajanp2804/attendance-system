@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from config import settings
 from db.session import get_db
-from db.models import User, RoleEnum
+from db.models import User, RoleEnum, TimetableSlot, Subject
 
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -81,3 +81,16 @@ def require_role(*roles: RoleEnum):
 require_student   = require_role(RoleEnum.student)
 require_professor = require_role(RoleEnum.professor, RoleEnum.admin)
 require_admin     = require_role(RoleEnum.admin)
+
+
+# ─── Class ownership ──────────────────────────────────────────────────────────
+
+async def teaches_slot(user: User, slot_id: str, db: AsyncSession) -> bool:
+    """True if the user is an admin or the professor of the slot's subject."""
+    if user.role == RoleEnum.admin:
+        return True
+    if user.role != RoleEnum.professor:
+        return False
+    slot = await db.get(TimetableSlot, str(slot_id))
+    subject = await db.get(Subject, str(slot.subject_id)) if slot else None
+    return subject is not None and str(subject.professor_id) == str(user.id)
