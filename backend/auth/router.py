@@ -81,8 +81,8 @@ async def login(
         raise HTTPException(status_code=403, detail="Account is deactivated")
 
     return TokenResponse(
-        access_token=create_access_token(str(user.id), user.role.value),
-        refresh_token=create_refresh_token(str(user.id)),
+        access_token=create_access_token(str(user.id), user.role.value, user.password_hash),
+        refresh_token=create_refresh_token(str(user.id), user.password_hash),
         role=user.role.value,
         user_id=str(user.id),
         name=user.name,
@@ -102,8 +102,8 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=401, detail="User not found")
 
     return TokenResponse(
-        access_token=create_access_token(str(user.id), user.role.value),
-        refresh_token=create_refresh_token(str(user.id)),
+        access_token=create_access_token(str(user.id), user.role.value, user.password_hash),
+        refresh_token=create_refresh_token(str(user.id), user.password_hash),
         role=user.role.value,
         user_id=str(user.id),
         name=user.name,

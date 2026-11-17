@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import hashlib, hmac
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
@@ -26,18 +27,31 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # ─── JWT tokens ───────────────────────────────────────────────────────────────
 
-def create_access_token(user_id: str, role: str) -> str:
+def password_fingerprint(password_hash: str) -> str:
+    """
+    Keyed hash of the stored password hash, put in every token as "pwd".
+    It changes whenever the password does, so tokens issued before a
+    password change stop working — no extra DB column needed.
+    """
+    return hmac.new(settings.SECRET_KEY.encode(), password_hash.encode(), hashlib.sha256).hexdigest()[:32]
+
+def token_matches_password(payload: dict, user: User) -> bool:
+    return hmac.compare_digest(str(payload.get("pwd", "")), password_fingerprint(user.password_hash))
+
+def create_access_token(user_id: str, role: str, password_hash: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return jwt.encode(
-        {"sub": user_id, "role": role, "exp": expire, "type": "access"},
+        {"sub": user_id, "role": role, "exp": expire, "type": "access",
+         "pwd": password_fingerprint(password_hash)},
         settings.SECRET_KEY,
         algorithm=settings.ALGORITHM,
     )
 
-def create_refresh_token(user_id: str) -> str:
+def create_refresh_token(user_id: str, password_hash: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     return jwt.encode(
-        {"sub": user_id, "exp": expire, "type": "refresh"},
+        {"sub": user_id, "exp": expire, "type": "refresh",
+         "pwd": password_fingerprint(password_hash)},
         settings.SECRET_KEY,
         algorithm=settings.ALGORITHM,
     )
@@ -64,6 +78,8 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
+    if not token_matches_password(payload, user):
+        raise HTTPException(status_code=401, detail="Password changed — please log in again")
     return user
 
 
