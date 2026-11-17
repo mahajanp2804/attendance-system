@@ -25,7 +25,7 @@ from db.models import (
     User, ClassSession, AttendanceRecord, TimetableSlot,
     Subject, Semester, Enrollment, RoleEnum, AttendanceStatus
 )
-from auth.utils import get_current_user, require_professor
+from auth.utils import get_current_user, require_professor, teaches_slot
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
 
@@ -104,6 +104,12 @@ async def _session_out(session: ClassSession, db: AsyncSession) -> SessionOut:
     )
 
 
+async def _ensure_teaches(user: User, slot_id: str, db: AsyncSession):
+    """403 unless the user teaches this class (admins always pass)."""
+    if not await teaches_slot(user, slot_id, db):
+        raise HTTPException(status_code=403, detail="You don't teach this class")
+
+
 # ─── Sessions ─────────────────────────────────────────────────────────────────
 
 @router.get("/sessions", response_model=list[SessionOut])
@@ -143,6 +149,8 @@ async def create_session(
     db: AsyncSession = Depends(get_db),
     prof: User = Depends(require_professor),
 ):
+    await _ensure_teaches(prof, body.slot_id, db)
+
     # Prevent duplicate sessions for same slot+date
     existing = await db.execute(
         select(ClassSession).where(
@@ -183,11 +191,12 @@ async def create_session(
 async def close_session(
     session_id: str,
     db: AsyncSession = Depends(get_db),
-    _prof: User = Depends(require_professor),
+    prof: User = Depends(require_professor),
 ):
     session = await db.get(ClassSession, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    await _ensure_teaches(prof, session.slot_id, db)
     if session.is_completed:
         raise HTTPException(status_code=400, detail="Session already closed")
 
