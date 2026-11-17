@@ -172,6 +172,9 @@ async def list_subjects(
             Enrollment.subject_id == Subject.id,
             Enrollment.student_id == current_user.id,
         ))
+    # Professors see only the subjects they teach (they can't edit the others)
+    elif current_user.role == RoleEnum.professor:
+        q = q.where(Subject.professor_id == current_user.id)
     q = q.order_by(Subject.name)
     result = await db.execute(q)
     return [await _enrich_subject(s, db) for s in result.scalars().all()]
