@@ -30,7 +30,7 @@ from recognition.faiss_index import faiss_index
 from recognition.session import tracker_registry
 from recognition.worker import run_ml
 from config import settings
-from auth.utils import decode_token, require_professor
+from auth.utils import decode_token, require_professor, teaches_slot
 
 router = APIRouter(prefix="/api/recognition", tags=["recognition"])
 
@@ -76,7 +76,7 @@ async def recognition_ws(websocket: WebSocket, session_id: str):
     try:
         token_msg = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
         payload = decode_token(token_msg)
-        if payload.get("role") not in ("professor", "admin"):
+        if payload.get("type") != "access" or payload.get("role") not in ("professor", "admin"):
             await websocket.send_text(json.dumps({"type": "error", "message": "Professors only"}))
             await websocket.close()
             return
@@ -85,8 +85,8 @@ async def recognition_ws(websocket: WebSocket, session_id: str):
         await websocket.send_text(json.dumps({"type": "error", "message": "Auth timeout"}))
         await websocket.close()
         return
-    except Exception as e:
-        await websocket.send_text(json.dumps({"type": "error", "message": f"Auth failed: {e}"}))
+    except Exception:
+        await websocket.send_text(json.dumps({"type": "error", "message": "Auth failed"}))
         await websocket.close()
         return
 
@@ -99,6 +99,17 @@ async def recognition_ws(websocket: WebSocket, session_id: str):
             return
         if session_obj.is_completed:
             await websocket.send_text(json.dumps({"type": "error", "message": "Session already closed"}))
+            await websocket.close()
+            return
+
+        # Token is valid, but the account must still be active and teach this class
+        user = await db.get(User, professor_id)
+        if not user or not user.is_active:
+            await websocket.send_text(json.dumps({"type": "error", "message": "Account not active"}))
+            await websocket.close()
+            return
+        if not await teaches_slot(user, session_obj.slot_id, db):
+            await websocket.send_text(json.dumps({"type": "error", "message": "You don't teach this class"}))
             await websocket.close()
             return
 
