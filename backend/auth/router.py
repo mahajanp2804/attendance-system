@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
+import math
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
@@ -12,6 +13,7 @@ from auth.utils import (
     create_access_token, create_refresh_token,
     decode_token, get_current_user,
 )
+from auth.rate_limit import email_limiter, ip_limiter
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -48,18 +50,33 @@ class ChangePasswordRequest(BaseModel):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
+    request: Request,
     form: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
     """Login with email + password. Returns JWT access + refresh tokens."""
+    # Too many recent failures for this account or IP → refuse before checking the password
+    email_key = form.username.strip().lower()
+    ip_key = request.client.host if request.client else "unknown"
+    wait = max(email_limiter.retry_after(email_key), ip_limiter.retry_after(ip_key))
+    if wait:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many failed login attempts. Try again in {math.ceil(wait / 60)} minute(s).",
+            headers={"Retry-After": str(wait)},
+        )
+
     result = await db.execute(select(User).where(User.email == form.username))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(form.password, user.password_hash):
+        email_limiter.record_failure(email_key)
+        ip_limiter.record_failure(ip_key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
         )
+    email_limiter.reset(email_key)
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is deactivated")
 
