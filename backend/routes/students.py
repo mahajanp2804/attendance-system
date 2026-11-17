@@ -22,7 +22,7 @@ import os, shutil, uuid
 
 from db.session import get_db
 from db.models import User, RoleEnum, Enrollment, Subject, Semester
-from auth.utils import get_current_user, require_professor, hash_password
+from auth.utils import get_current_user, require_professor, hash_password, ensure_teaches_subject
 from config import settings
 
 router = APIRouter(prefix="/api/students", tags=["students"])
@@ -184,7 +184,7 @@ async def enroll_student(
     student_id: str,
     body: EnrollRequest,
     db: AsyncSession = Depends(get_db),
-    _prof: User = Depends(require_professor),
+    prof: User = Depends(require_professor),
 ):
     student = await _get_student_or_404(student_id, db)
     enrolled, skipped = [], []
@@ -195,6 +195,8 @@ async def enroll_student(
         if not sub:
             skipped.append({"subject_id": subject_id, "reason": "subject not found"})
             continue
+        # Only into classes this professor teaches (a 403 rolls back the whole request)
+        await ensure_teaches_subject(prof, subject_id, db)
         # Check not already enrolled
         existing = await db.execute(
             select(Enrollment).where(
@@ -218,8 +220,9 @@ async def unenroll_student(
     student_id: str,
     subject_id: str,
     db: AsyncSession = Depends(get_db),
-    _prof: User = Depends(require_professor),
+    prof: User = Depends(require_professor),
 ):
+    await ensure_teaches_subject(prof, subject_id, db)
     result = await db.execute(
         select(Enrollment).where(
             Enrollment.student_id == student_id,
