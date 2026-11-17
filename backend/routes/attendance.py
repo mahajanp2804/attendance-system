@@ -212,14 +212,23 @@ async def close_session(
 async def get_session_records(
     session_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
+    q = (
         select(AttendanceRecord, User)
         .join(User, User.id == AttendanceRecord.student_id)
         .where(AttendanceRecord.session_id == session_id)
         .order_by(User.name)
     )
+    if current_user.role == RoleEnum.student:
+        # Students only see their own record, never their classmates'
+        q = q.where(AttendanceRecord.student_id == str(current_user.id))
+    else:
+        session = await db.get(ClassSession, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        await _ensure_teaches(current_user, session.slot_id, db)
+    result = await db.execute(q)
     rows = result.all()
     return [
         RecordOut(
