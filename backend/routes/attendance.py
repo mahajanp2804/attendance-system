@@ -249,6 +249,8 @@ async def override_record(
     record = await db.get(AttendanceRecord, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
+    session = await db.get(ClassSession, str(record.session_id))
+    await _ensure_teaches(prof, session.slot_id, db)
 
     record.status = body.status
     record.is_overridden = True
