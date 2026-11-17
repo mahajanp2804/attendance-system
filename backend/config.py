@@ -41,6 +41,21 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+# Anyone who knows the secret key can sign their own admin tokens, so never run
+# outside DEBUG with a known placeholder or a short key
+_PLACEHOLDER_KEYS = {
+    "dev-secret-change-in-production",
+    "change-this-to-a-long-random-string-in-production",
+    "change-this-in-production-use-openssl-rand-hex-32",
+}
+if settings.SECRET_KEY in _PLACEHOLDER_KEYS or len(settings.SECRET_KEY) < 32:
+    if not settings.DEBUG:
+        raise RuntimeError(
+            "SECRET_KEY is missing, a placeholder, or shorter than 32 characters. "
+            "Generate one with `openssl rand -hex 32` and set it in backend/.env"
+        )
+    print("⚠️  Using a weak SECRET_KEY — fine for local DEBUG, never in production")
+
 # Ensure data dirs exist at startup
 for d in [settings.EMBEDDINGS_DIR, settings.FACE_PHOTOS_DIR, settings.SNAPSHOTS_DIR,
           os.path.dirname(settings.YOLO_MODEL_PATH)]:
