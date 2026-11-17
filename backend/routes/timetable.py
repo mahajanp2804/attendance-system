@@ -1,8 +1,8 @@
 """
 Routes:
   GET    /api/semesters/                        — list semesters
-  POST   /api/semesters/                        — create semester (professor)
-  PATCH  /api/semesters/{id}/activate           — set active semester (professor)
+  POST   /api/semesters/                        — create semester (admin)
+  PATCH  /api/semesters/{id}/activate           — set active semester (admin)
 
   GET    /api/subjects/                         — list subjects (filtered by semester)
   POST   /api/subjects/                         — create subject (professor)
@@ -28,7 +28,7 @@ from db.models import (
     User, Semester, Subject, TimetableSlot, Enrollment,
     RoleEnum, DayEnum
 )
-from auth.utils import get_current_user, require_professor, ensure_teaches_subject
+from auth.utils import get_current_user, require_professor, require_admin, ensure_teaches_subject
 
 router = APIRouter(tags=["timetable"])
 
@@ -110,7 +110,7 @@ async def list_semesters(db: AsyncSession = Depends(get_db), _=Depends(get_curre
 async def create_semester(
     body: SemesterCreate,
     db: AsyncSession = Depends(get_db),
-    _prof: User = Depends(require_professor),
+    _admin: User = Depends(require_admin),
 ):
     sem = Semester(name=body.name, start_date=body.start_date, end_date=body.end_date)
     db.add(sem)
@@ -123,7 +123,7 @@ async def create_semester(
 async def activate_semester(
     semester_id: str,
     db: AsyncSession = Depends(get_db),
-    _prof: User = Depends(require_professor),
+    _admin: User = Depends(require_admin),
 ):
     # Deactivate all, then activate the target
     all_sems = await db.execute(select(Semester))
