@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import api from '../../hooks/api'
+import useAuthStore from '../../store/authStore'
 import SemesterPicker from '../../components/SemesterPicker'
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
 
 export default function ProfTimetable() {
+  const { user } = useAuthStore()
+  const isAdmin  = user?.role === 'admin'   // only admins can manage semesters
   const [timetable,    setTimetable]    = useState({})
   const [subjects,     setSubjects]     = useState([])
   const [semesterId,   setSemesterId]   = useState('')
@@ -106,9 +109,11 @@ export default function ProfTimetable() {
         <div className="flex-1">
           <SemesterPicker value={semesterId} onChange={onSemesterChange} />
         </div>
-        <button className="btn-outline text-sm shrink-0" onClick={() => setTab('semesters')}>
-          Manage semesters
-        </button>
+        {isAdmin && (
+          <button className="btn-outline text-sm shrink-0" onClick={() => setTab('semesters')}>
+            Manage semesters
+          </button>
+        )}
       </div>
 
       {/* Tab bar */}
@@ -116,7 +121,7 @@ export default function ProfTimetable() {
         {[
           { key: 'timetable', label: 'Timetable' },
           { key: 'subjects',  label: 'Subjects' },
-          { key: 'semesters', label: 'Semesters' },
+          ...(isAdmin ? [{ key: 'semesters', label: 'Semesters' }] : []),
         ].map(t => (
           <button key={t.key}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -208,7 +213,7 @@ export default function ProfTimetable() {
       )}
 
       {/* ── SEMESTERS TAB ─────────────────────────────────────────────── */}
-      {tab === 'semesters' && (
+      {tab === 'semesters' && isAdmin && (
         <>
           <div className="flex justify-end">
             <button className="btn-primary text-sm"
