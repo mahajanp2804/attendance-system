@@ -321,8 +321,9 @@ async def get_today_timetable(
 async def create_slot(
     body: SlotCreate,
     db: AsyncSession = Depends(get_db),
-    _prof: User = Depends(require_professor),
+    prof: User = Depends(require_professor),
 ):
+    await ensure_teaches_subject(prof, body.subject_id, db)
     if body.start_time >= body.end_time:
         raise HTTPException(status_code=400, detail="start_time must be before end_time")
     slot = TimetableSlot(
@@ -339,11 +340,12 @@ async def update_slot(
     slot_id: str,
     body: SlotUpdate,
     db: AsyncSession = Depends(get_db),
-    _prof: User = Depends(require_professor),
+    prof: User = Depends(require_professor),
 ):
     slot = await db.get(TimetableSlot, slot_id)
     if not slot:
         raise HTTPException(status_code=404, detail="Slot not found")
+    await ensure_teaches_subject(prof, slot.subject_id, db)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(slot, field, value)
     db.add(slot)
@@ -354,9 +356,10 @@ async def update_slot(
 async def delete_slot(
     slot_id: str,
     db: AsyncSession = Depends(get_db),
-    _prof: User = Depends(require_professor),
+    prof: User = Depends(require_professor),
 ):
     slot = await db.get(TimetableSlot, slot_id)
     if not slot:
         raise HTTPException(status_code=404, detail="Slot not found")
+    await ensure_teaches_subject(prof, slot.subject_id, db)
     await db.delete(slot)
