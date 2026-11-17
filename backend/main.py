@@ -1,8 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
-import os
 
 from config import settings
 from db.session import init_db
@@ -74,8 +72,5 @@ app.include_router(recognition_router)
 async def health():
     return {"status": "ok", "app": settings.APP_NAME}
 
-
-# ─── Static files (face snapshots, served to frontend) ───────────────────────
-
-os.makedirs(settings.SNAPSHOTS_DIR, exist_ok=True)
-app.mount("/snapshots", StaticFiles(directory=settings.SNAPSHOTS_DIR), name="snapshots")
+# Face snapshots are biometric data, so they're not served as public static files —
+# professors fetch them through GET /api/attendance/records/{id}/snapshot
