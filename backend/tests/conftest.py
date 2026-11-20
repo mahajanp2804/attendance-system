@@ -33,8 +33,12 @@ os.environ.update({
     "SNAPSHOTS_DIR": os.path.join(DATA_DIR, "snapshots"),
     "YOLO_MODEL_PATH": os.path.join(DATA_DIR, "models", "yolov8n-face.pt"),
 })
-# Run from the temp dir so a developer's backend/.env is never picked up
-os.chdir(DATA_DIR)
+
+
+def pytest_sessionstart(session):
+    # Run from the temp dir so a developer's backend/.env is never picked up
+    # (app config reads .env from the working directory when first imported)
+    os.chdir(DATA_DIR)
 
 
 # ── Stub the heavy ML libraries when they aren't installed ───────────────────
