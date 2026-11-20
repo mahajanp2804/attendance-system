@@ -111,7 +111,8 @@ def api():
     """Fresh seeded database and the running app."""
     if not TEST_DATABASE_URL:
         pytest.skip("set TEST_DATABASE_URL to run the API tests")
-    db_name = TEST_DATABASE_URL.rsplit("/", 1)[-1].split("?")[0]
+    from sqlalchemy.engine import make_url
+    db_name = make_url(TEST_DATABASE_URL).database or ""
     if "test" not in db_name:
         pytest.exit(f"Refusing to wipe database '{db_name}': its name must contain 'test'")
 
