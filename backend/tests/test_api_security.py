@@ -206,3 +206,76 @@ def test_only_admins_manage_semesters(api):
     assert api.client.patch(f"/api/semesters/{sem_id}/activate", headers=api.h("priya")).status_code == 403
     assert api.client.post("/api/semesters/", json=new, headers=api.h("admin")).status_code == 201
     assert api.client.patch(f"/api/semesters/{sem_id}/activate", headers=api.h("admin")).status_code == 200
+
+
+# ── Photo uploads ─────────────────────────────────────────────────────────────
+
+JPEG = b"\xff\xd8\xff\xe0" + b"0" * 100
+
+
+def test_photo_uploads_are_checked(api):
+    url = f"/api/students/{api.student_ids['student01@college.edu']}/photos"
+    files = [
+        ("files", ("ok.jpg", JPEG, "image/jpeg")),
+        ("files", ("fake.jpg", b"<?php echo 1; ?>", "image/jpeg")),               # named like an image
+        ("files", ("huge.jpg", b"\xff\xd8\xff" + b"0" * (6 * 1024 * 1024), "image/jpeg")),
+    ]
+    r = api.client.post(url, files=files, headers=api.h("priya"))
+    assert r.status_code == 200
+    assert r.json()["saved"] == 1
+    assert sorted(s["reason"] for s in r.json()["skipped"]) == ["larger than 5 MB", "not a valid JPEG or PNG image"]
+
+    too_many = [("files", (f"{i}.jpg", JPEG, "image/jpeg")) for i in range(21)]
+    assert api.client.post(url, files=too_many, headers=api.h("priya")).status_code == 400
+
+
+# ── Failed-login limit ────────────────────────────────────────────────────────
+
+def login_status(api, email, password):
+    r = api.client.post("/api/auth/login", data={"username": email, "password": password})
+    return r.status_code, r.headers
+
+
+def test_repeated_failed_logins_are_blocked(api):
+    for _ in range(5):
+        assert login_status(api, "student02@college.edu", "wrong")[0] == 401
+    status, headers = login_status(api, "student02@college.edu", "student123")   # right password, too late
+    assert status == 429 and int(headers["retry-after"]) > 0
+    assert login_status(api, "student04@college.edu", "student123")[0] == 200   # other accounts unaffected
+
+
+def test_a_successful_login_resets_the_count(api):
+    for _ in range(4):
+        login_status(api, "student03@college.edu", "wrong")
+    assert login_status(api, "student03@college.edu", "student123")[0] == 200
+    for _ in range(4):
+        assert login_status(api, "student03@college.edu", "wrong")[0] == 401
+
+
+# ── Password change (changes Priya's password, then puts it back) ─────────────
+
+def test_password_change_logs_out_old_sessions(api):
+    r = api.client.post("/api/auth/login", data={"username": "priya.sharma@college.edu", "password": "prof123"})
+    old_access, old_refresh = r.json()["access_token"], r.json()["refresh_token"]
+    old = {"Authorization": f"Bearer {old_access}"}
+    sid = open_session(api, "2026-11-11")
+
+    r = api.client.post("/api/auth/change-password",
+                        json={"current_password": "prof123", "new_password": "newpass456"}, headers=old)
+    assert r.status_code == 204
+    try:
+        assert api.client.get("/api/auth/me", headers=old).status_code == 401
+        assert api.client.post("/api/auth/refresh", json={"refresh_token": old_refresh}).status_code == 401
+        assert first_ws_message(api, sid, old_access)["type"] == "error"
+
+        r = api.client.post("/api/auth/login", data={"username": "priya.sharma@college.edu", "password": "newpass456"})
+        assert r.status_code == 200
+        new = {"Authorization": f"Bearer {r.json()['access_token']}"}
+        assert api.client.get("/api/auth/me", headers=new).status_code == 200
+    finally:
+        r = api.client.post("/api/auth/login", data={"username": "priya.sharma@college.edu", "password": "newpass456"})
+        if r.status_code == 200:
+            api.client.post("/api/auth/change-password",
+                            json={"current_password": "newpass456", "new_password": "prof123"},
+                            headers={"Authorization": f"Bearer {r.json()['access_token']}"})
+        api.tokens.pop("priya", None)   # cached token is from before the change
