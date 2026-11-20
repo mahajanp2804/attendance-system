@@ -71,6 +71,27 @@ npm run dev
 
 ---
 
+## Running Tests
+
+The backend tests stub out the face models, so they don't need torch or a GPU.
+
+```bash
+cd backend
+pip install -r requirements-test.txt
+pytest
+```
+
+The API access-control tests also need a throwaway Postgres database. They are skipped unless you set `TEST_DATABASE_URL`, and they **drop and recreate every table**, so the database name must contain `test`:
+
+```bash
+createdb attendance_test
+TEST_DATABASE_URL=postgresql+asyncpg://localhost/attendance_test pytest
+```
+
+GitHub Actions runs the full suite against Postgres 16, and checks the frontend builds, on every push to `main`.
+
+---
+
 ## Project Structure
 ```
 attendance-system/
@@ -92,11 +113,13 @@ attendance-system/
 │   │   ├── embedder.py          # FaceNet 512-dim embeddings
 │   │   ├── faiss_index.py       # Fast nearest-neighbour index
 │   │   └── session.py           # Per-class deduplication
-│   └── db/
-│       ├── models.py            # SQLAlchemy ORM models
-│       ├── session.py           # Async DB connection
-│       ├── seed.py              # Demo data
-│       └── migrations/          # Alembic migration scripts
+│   ├── db/
+│   │   ├── models.py            # SQLAlchemy ORM models
+│   │   ├── session.py           # Async DB connection
+│   │   ├── seed.py              # Demo data
+│   │   └── migrations/          # Alembic migration scripts
+│   └── tests/                   # pytest suite (face models stubbed)
+├── .github/workflows/           # CI: backend tests + frontend build
 ├── frontend/
 │   └── src/
 │       ├── pages/
