@@ -23,3 +23,6 @@ backend/data/
 .DS_Store
 .vscode/
 .idea/
+
+# Tests
+.pytest_cache/
