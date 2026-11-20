@@ -1,0 +1,48 @@
+name: Backend tests
+
+on:
+  push:
+    branches: [main]
+    paths: ["backend/**", ".github/workflows/backend-tests.yml"]
+  pull_request:
+    paths: ["backend/**", ".github/workflows/backend-tests.yml"]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+
+    # Throwaway database for the API tests — they drop and recreate every table
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: attendance_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U test -d attendance_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/attendance_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # same as the backend Dockerfile
+          cache: pip
+          cache-dependency-path: backend/requirements-test.txt
+
+      # Test requirements skip torch/ultralytics — tests stub the face models
+      - run: pip install -r requirements-test.txt
+
+      - run: pytest -v
