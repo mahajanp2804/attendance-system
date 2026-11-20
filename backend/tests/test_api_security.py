@@ -102,3 +102,107 @@ def test_only_the_class_professor_can_scan(api):
     assert first_ws_message(api, sid, "not-a-token") == {"type": "error", "message": "Auth failed"}
     msg = first_ws_message(api, sid, api.tokens["priya"])
     assert msg["type"] == "connected" and msg["total_enrolled"] == 10
+
+
+# ── Export and low attendance ─────────────────────────────────────────────────
+
+def export_rows(api, who, **params):
+    r = api.client.get("/api/attendance/export", params=params, headers=api.h(who))
+    return r.status_code, [line for line in r.text.splitlines()[1:] if line]
+
+
+def test_professors_only_export_their_own_classes(api):
+    sid = open_session(api, "2026-11-09")
+    api.client.patch(f"/api/attendance/sessions/{sid}/close", headers=api.h("priya"))
+
+    status, rows = export_rows(api, "rajesh")
+    assert status == 200 and not any("CS301" in row for row in rows)
+    _, priya_rows = export_rows(api, "priya")
+    _, admin_rows = export_rows(api, "admin")
+    assert sum("CS301" in row for row in priya_rows) >= 10
+    assert len(admin_rows) == len(priya_rows)   # only Priya's classes have students
+    status, _ = export_rows(api, "rajesh", subject_id=api.subjects["CS301"])
+    assert status == 403
+
+
+def test_low_attendance_only_covers_own_classes(api):
+    sid = open_session(api, "2026-11-10")
+    api.client.patch(f"/api/attendance/sessions/{sid}/close", headers=api.h("priya"))   # everyone absent
+
+    low = lambda who: api.client.get("/api/attendance/low-attendance", headers=api.h(who)).json()
+    assert low("rajesh") == []
+    assert len(low("priya")) > 0
+    assert len(low("admin")) == len(low("priya"))
+
+
+# ── Subjects and timetable slots ──────────────────────────────────────────────
+
+def test_only_the_subject_professor_can_edit_or_delete_it(api):
+    url = f"/api/subjects/{api.subjects['CS301']}"
+    assert api.client.patch(url, json={"name": "Hacked"}, headers=api.h("rajesh")).status_code == 403
+    assert api.client.delete(url, headers=api.h("rajesh")).status_code == 403
+    assert api.client.patch(url, json={"name": "Operating Systems"}, headers=api.h("priya")).status_code == 200
+
+
+def test_only_admins_assign_subjects_to_someone_else(api):
+    priya_id = api.client.get("/api/auth/me", headers=api.h("priya")).json()["id"]
+    sem_id = next(s["id"] for s in api.client.get("/api/semesters/", headers=api.h("rajesh")).json() if s["is_active"])
+
+    r = api.client.post("/api/subjects/", json={"name": "Fake", "code": "FK1", "semester_id": sem_id,
+                                                "professor_id": priya_id}, headers=api.h("rajesh"))
+    assert r.status_code == 403
+    r = api.client.post("/api/subjects/", json={"name": "Signals", "code": "EC399", "semester_id": sem_id},
+                        headers=api.h("rajesh"))
+    assert r.status_code == 201
+    url = f"/api/subjects/{r.json()['id']}"
+    assert api.client.patch(url, json={"professor_id": priya_id}, headers=api.h("rajesh")).status_code == 403
+    r = api.client.patch(url, json={"professor_id": priya_id}, headers=api.h("admin"))
+    assert r.status_code == 200 and r.json()["professor_id"] == priya_id
+    assert api.client.delete(url, headers=api.h("priya")).status_code == 204   # now hers
+
+
+def test_professors_only_list_their_own_subjects(api):
+    codes = lambda who: {s["code"] for s in api.client.get("/api/subjects/", headers=api.h(who)).json()}
+    assert codes("rajesh") == {"EC301"}
+    assert {"CS301", "CS302", "EC301"} <= codes("admin")
+
+
+def test_only_the_subject_professor_can_manage_its_slots(api):
+    slot = {"subject_id": api.subjects["CS301"], "day": "saturday",
+            "start_time": "10:00", "end_time": "11:00", "room": "R1"}
+    assert api.client.post("/api/timetable/slots", json=slot, headers=api.h("rajesh")).status_code == 403
+    r = api.client.post("/api/timetable/slots", json=slot, headers=api.h("priya"))
+    assert r.status_code == 201
+    url = f"/api/timetable/slots/{r.json()['id']}"
+    assert api.client.patch(url, json={"room": "R2"}, headers=api.h("rajesh")).status_code == 403
+    assert api.client.delete(url, headers=api.h("rajesh")).status_code == 403
+    r = api.client.patch(url, json={"room": "R2"}, headers=api.h("priya"))
+    assert r.status_code == 200 and r.json()["room"] == "R2"
+    assert api.client.delete(url, headers=api.h("priya")).status_code == 204
+
+
+# ── Enrollment ────────────────────────────────────────────────────────────────
+
+def test_professors_only_enroll_into_their_own_classes(api):
+    s01 = api.student_ids["student01@college.edu"]
+    os_id, ec_id = api.subjects["CS301"], api.subjects["EC301"]
+
+    # One class that's his and one that isn't → refused, and nothing half-applied
+    r = api.client.post(f"/api/students/{s01}/enroll", json={"subject_ids": [ec_id, os_id]}, headers=api.h("rajesh"))
+    assert r.status_code == 403
+    assert api.client.delete(f"/api/students/{s01}/enroll/{os_id}", headers=api.h("rajesh")).status_code == 403
+
+    r = api.client.post(f"/api/students/{s01}/enroll", json={"subject_ids": [ec_id]}, headers=api.h("rajesh"))
+    assert r.status_code == 201 and r.json()["enrolled"] == [ec_id]
+    assert api.client.delete(f"/api/students/{s01}/enroll/{ec_id}", headers=api.h("rajesh")).status_code == 204
+
+
+# ── Semesters ─────────────────────────────────────────────────────────────────
+
+def test_only_admins_manage_semesters(api):
+    sem_id = next(s["id"] for s in api.client.get("/api/semesters/", headers=api.h("s01")).json() if s["is_active"])
+    new = {"name": "Sem 6", "start_date": "2025-01-01", "end_date": "2025-05-31"}
+    assert api.client.post("/api/semesters/", json=new, headers=api.h("priya")).status_code == 403
+    assert api.client.patch(f"/api/semesters/{sem_id}/activate", headers=api.h("priya")).status_code == 403
+    assert api.client.post("/api/semesters/", json=new, headers=api.h("admin")).status_code == 201
+    assert api.client.patch(f"/api/semesters/{sem_id}/activate", headers=api.h("admin")).status_code == 200
