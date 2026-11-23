@@ -21,8 +21,9 @@ export default function StudentDashboard() {
   }, [])
 
   const lowCount = summary.filter(s => s.is_low).length
-  const overallPct = summary.length
-    ? Math.round(summary.reduce((a, s) => a + s.percentage, 0) / summary.length)
+  const held = summary.filter(s => s.total_classes > 0)   // subjects that have had classes
+  const overallPct = held.length
+    ? Math.round(held.reduce((a, s) => a + s.percentage, 0) / held.length)
     : null
 
   if (loading) return <PageSkeleton />
