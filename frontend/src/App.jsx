@@ -15,9 +15,16 @@ import ProfScanner    from './pages/professor/Scanner'
 import ProfAttendance from './pages/professor/Attendance'
 
 function ProtectedRoute({ children, role }) {
-  const { user, token } = useAuthStore()
+  const { user, token, fetchMe } = useAuthStore()
+
+  // After a page reload only the token survives — load the user before checking the role
+  useEffect(() => {
+    if (token && !user) fetchMe()
+  }, [token, user])
+
   if (!token) return <Navigate to="/login" replace />
-  if (role && user && user.role !== role && !(role === 'professor' && user.role === 'admin'))
+  if (!user) return <div className="min-h-screen flex items-center justify-center text-text-muted">Loading…</div>
+  if (role && user.role !== role && !(role === 'professor' && user.role === 'admin'))
     return <Navigate to="/login" replace />
   return children
 }
