@@ -5,6 +5,8 @@ import useAuthStore from '../../store/authStore'
 
 export default function ProfDashboard() {
   const { user }  = useAuthStore()
+  // First name for the greeting, skipping titles like "Dr." or "Prof."
+  const firstName = (user?.name || '').split(' ').find(w => !/^(dr|prof|mr|mrs|ms)\.?$/i.test(w)) || ''
   const [today,   setToday]   = useState([])
   const [low,     setLow]     = useState([])
   const [loading, setLoading] = useState(true)
@@ -39,7 +41,7 @@ export default function ProfDashboard() {
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       <div>
-        <h1 className="text-xl font-bold text-text-primary">Welcome, {user?.name?.split(' ')[0]}</h1>
+        <h1 className="text-xl font-bold text-text-primary">Welcome, {firstName}</h1>
         <p className="text-text-secondary text-sm mt-0.5">Professor dashboard</p>
       </div>
 
