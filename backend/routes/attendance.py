@@ -372,7 +372,7 @@ async def attendance_summary(
             present=present_count,
             absent=absent_count,
             percentage=percentage,
-            is_low=percentage < 75.0,
+            is_low=total_sessions > 0 and percentage < 75.0,   # no classes held yet isn't "low"
         ))
 
     return sorted(summary, key=lambda x: x.subject_name)
