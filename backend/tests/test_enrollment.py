@@ -94,3 +94,9 @@ def test_force_enrolls_a_matching_face_anyway(enroll):
     enroll.run("stu-twin-a")
     assert enroll.run("stu-twin-b", force=True)["status"] == "success"
     assert {"stu-twin-a", "stu-twin-b"} <= set(faiss_index._student_ids)
+
+
+def test_a_different_face_enrolls_normally(enroll):
+    enroll.run("stu-first")
+    enroll.embedder.face = unit(rng.normal(size=512))   # someone else's photos
+    assert enroll.run("stu-other")["status"] == "success"
