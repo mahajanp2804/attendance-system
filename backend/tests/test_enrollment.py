@@ -25,15 +25,19 @@ STUDENT = unit(rng.normal(size=512))
 class FakeEmbedder:
     def __init__(self):
         self.threads = set()
+        self.face = STUDENT   # whose face the uploaded photos show
 
     def embed(self, image):
         self.threads.add(threading.current_thread().name)
-        return unit(STUDENT + rng.normal(scale=0.05, size=512))   # each photo slightly different
+        return unit(self.face + rng.normal(scale=0.05, size=512))   # each photo slightly different
 
 
 class FakeDB:
     def add(self, obj):
         pass
+
+    async def get(self, model, id):
+        return types.SimpleNamespace(name=f"Name of {id}", roll_number=f"R-{id}")
 
 
 @pytest.fixture
@@ -52,8 +56,8 @@ def enroll(monkeypatch, tmp_path):
     (tmp_path / "empty").mkdir()
     faiss_index.load_all(str(tmp_path / "empty"))
 
-    def run(student_id="stu-new"):
-        return asyncio.run(students_routes.generate_embedding(student_id, db=FakeDB(), _prof=None))
+    def run(student_id="stu-new", force=False):
+        return asyncio.run(students_routes.generate_embedding(student_id, force=force, db=FakeDB(), _prof=None))
     return types.SimpleNamespace(run=run, student=student, embedder=fake)
 
 
