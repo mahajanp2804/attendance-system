@@ -78,3 +78,13 @@ def test_reenrolling_does_not_duplicate_the_student(enroll):
     enroll.run()
     enroll.run()
     assert faiss_index._student_ids.count("stu-new") == 1
+
+
+def test_same_face_for_a_second_student_is_refused(enroll):
+    from fastapi import HTTPException
+    enroll.run("stu-first")
+    with pytest.raises(HTTPException) as refused:
+        enroll.run("stu-second")
+    assert refused.value.status_code == 409
+    assert "R-stu-first" in refused.value.detail   # names who it clashes with
+    assert "stu-second" not in faiss_index._student_ids
