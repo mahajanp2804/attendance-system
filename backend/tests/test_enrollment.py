@@ -29,7 +29,7 @@ class FakeEmbedder:
 
     def embed(self, image):
         self.threads.add(threading.current_thread().name)
-        return unit(self.face + rng.normal(scale=0.05, size=512))   # each photo slightly different
+        return unit(self.face + rng.normal(scale=0.01, size=512))   # each photo slightly different
 
 
 class FakeDB:
