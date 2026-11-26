@@ -311,13 +311,15 @@ async def upload_face_photos(
 @router.post("/{student_id}/embed")
 async def generate_embedding(
     student_id: str,
+    force: bool = False,
     db: AsyncSession = Depends(get_db),
     _prof: User = Depends(require_professor),
 ):
     """
     Triggers face embedding generation for a student.
     Requires at least 3 face photos to have been uploaded first.
-    The recognition engine (Step 5) handles the actual processing.
+    Refuses (409) a face that already matches another enrolled student;
+    pass ?force=true to enroll anyway (e.g. identical twins).
     """
     student = await _get_student_or_404(student_id, db)
 
