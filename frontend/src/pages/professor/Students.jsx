@@ -51,14 +51,19 @@ export default function ProfStudents() {
     load()
   }
 
-  const generateEmbedding = async (studentId) => {
+  const generateEmbedding = async (studentId, force = false) => {
     try {
-      const res = await api.post(`/api/students/${studentId}/embed`)
+      const res = await api.post(`/api/students/${studentId}/embed`, null, { params: force ? { force: true } : {} })
       alert(res.data.status === 'success'
         ? `✅ Embedding generated from ${res.data.photos_used} photos`
         : res.data.message)
       load()
     } catch (e) {
+      // Face already enrolled as another student — let the professor decide
+      if (e.response?.status === 409) {
+        if (confirm(`${e.response.data.detail}\n\nEnroll anyway?`)) generateEmbedding(studentId, true)
+        return
+      }
       alert(e.response?.data?.detail || 'Failed')
     }
   }
