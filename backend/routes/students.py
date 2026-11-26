@@ -350,6 +350,19 @@ async def generate_embedding(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Embedding generation failed: {str(e)}")
 
+    # The same face enrolled as two students means the scanner can only ever mark
+    # whichever one is closer — so refuse unless the professor confirms
+    if not force:
+        clash = next((m for m in faiss_index.search(embedding, top_k=2) if m[0] != student_id), None)
+        if clash and clash[1] >= settings.RECOGNITION_THRESHOLD:
+            other = await db.get(User, clash[0])
+            who = f"{other.name} ({other.roll_number})" if other else "another student"
+            raise HTTPException(
+                status_code=409,
+                detail=f"This face matches {who}, who is already enrolled ({clash[1]:.0%} similar). "
+                       "Check you picked the right student.",
+            )
+
     embedding_path = save_embedding(student_id, embedding, settings.EMBEDDINGS_DIR)
     # Make the student recognisable straight away, without a server restart
     faiss_index.add_student(student_id, embedding)
