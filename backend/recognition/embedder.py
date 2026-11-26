@@ -87,16 +87,11 @@ class FaceEmbedder:
         return results
 
 
-def generate_and_save_embedding(
-    student_id: str,
-    photos_dir: str,
-    output_dir: str,
-) -> tuple[str, np.ndarray]:
+def compute_mean_embedding(photos_dir: str) -> np.ndarray:
     """
-    Generate mean embedding from all face photos in photos_dir.
-    Saves a .npy file to output_dir/{student_id}.npy.
-    Returns (saved path, embedding). Blocking — call it through run_ml().
-    Uses the shared embedder singleton, so FaceNet is only loaded once.
+    Generate one mean embedding from all face photos in photos_dir.
+    Blocking — call it through run_ml(). Uses the shared embedder
+    singleton, so FaceNet is only loaded once.
     """
     photo_files = [
         f for f in os.listdir(photos_dir)
@@ -121,13 +116,15 @@ def generate_and_save_embedding(
     # Average all embeddings and re-normalise → one robust reference vector
     mean_emb = np.mean(embeddings, axis=0)
     norm = np.linalg.norm(mean_emb)
-    mean_emb = mean_emb / norm if norm > 0 else mean_emb
+    return mean_emb / norm if norm > 0 else mean_emb
 
+
+def save_embedding(student_id: str, embedding: np.ndarray, output_dir: str) -> str:
+    """Save to output_dir/{student_id}.npy (replacing any old one). Returns the path."""
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, f"{student_id}.npy")
-    np.save(out_path, mean_emb)
-
-    return out_path, mean_emb
+    np.save(out_path, embedding)
+    return out_path
 
 
 # Singleton

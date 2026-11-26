@@ -336,23 +336,22 @@ async def generate_embedding(
 
     # Import here to avoid circular deps; recognition engine built in Step 5
     try:
-        from recognition.embedder import generate_and_save_embedding
-        from recognition.worker import run_ml
-        embedding_path, embedding = await run_ml(
-            generate_and_save_embedding,
-            student_id,
-            student.face_photos_dir,
-            settings.EMBEDDINGS_DIR,
-        )
-        # Make the student recognisable straight away, without a server restart
+        from recognition.embedder import compute_mean_embedding, save_embedding
         from recognition.faiss_index import faiss_index
-        faiss_index.add_student(student_id, embedding)
-        student.embedding_path = embedding_path
-        student.embedding_ready = True
-        db.add(student)
-        return {"status": "success", "embedding_path": embedding_path, "photos_used": len(photos)}
+        from recognition.worker import run_ml
     except ImportError:
         # Recognition engine not built yet (Step 5)
         return {"status": "pending", "message": "Recognition engine not yet available. Come back after Step 5."}
+
+    try:
+        embedding = await run_ml(compute_mean_embedding, student.face_photos_dir)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Embedding generation failed: {str(e)}")
+
+    embedding_path = save_embedding(student_id, embedding, settings.EMBEDDINGS_DIR)
+    # Make the student recognisable straight away, without a server restart
+    faiss_index.add_student(student_id, embedding)
+    student.embedding_path = embedding_path
+    student.embedding_ready = True
+    db.add(student)
+    return {"status": "success", "embedding_path": embedding_path, "photos_used": len(photos)}
