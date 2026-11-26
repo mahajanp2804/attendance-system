@@ -88,3 +88,9 @@ def test_same_face_for_a_second_student_is_refused(enroll):
     assert refused.value.status_code == 409
     assert "R-stu-first" in refused.value.detail   # names who it clashes with
     assert "stu-second" not in faiss_index._student_ids
+
+
+def test_force_enrolls_a_matching_face_anyway(enroll):
+    enroll.run("stu-twin-a")
+    assert enroll.run("stu-twin-b", force=True)["status"] == "success"
+    assert {"stu-twin-a", "stu-twin-b"} <= set(faiss_index._student_ids)
